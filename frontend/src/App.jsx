@@ -23,7 +23,8 @@ import {
   CheckSquare,
   Sparkles,
   Inbox,
-  LifeBuoy
+  LifeBuoy,
+  Terminal
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.port && window.location.port !== '5000'
@@ -95,6 +96,9 @@ export default function App() {
 
   // Custom Delete Confirmation State
   const [deleteConfirmation, setDeleteConfirmation] = useState(null); // { type: 'task' | 'column', id: string, title: string }
+
+  // Developer Console Collapsible State
+  const [showDevConsole, setShowDevConsole] = useState(false);
 
   // File input ref for import
   const fileInputRef = useRef(null);
@@ -723,13 +727,19 @@ export default function App() {
 
           {/* Connected Live Database Ping badge */}
           <div className={`flex items-center justify-between px-3 py-1.5 rounded-xl border text-[10px] font-bold ${
-            isDark ? 'bg-slate-950 border-slate-900' : 'bg-slate-50 border-slate-150'
+            isDark ? 'bg-slate-950 border-slate-900' : 'bg-slate-55 bg-slate-50 border-slate-150'
           }`}>
             <span className="flex items-center gap-1.5">
-              <span className={`h-2 w-2 rounded-full ${serverError ? 'bg-rose-500' : 'bg-emerald-555 bg-gradient-to-r from-emerald-400 to-teal-500'} ${serverError ? 'animate-pulse' : 'animate-ping'}`} />
-              <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>{serverError ? 'Server Offline' : 'Connected to DB.json'}</span>
+              <span className={`h-2 w-2 rounded-full ${serverError ? 'bg-rose-500' : 'bg-emerald-500 bg-gradient-to-r from-emerald-400 to-teal-500'} ${serverError ? 'animate-pulse' : 'animate-ping'}`} />
+              <span className={isDark ? 'text-slate-400' : 'text-slate-650'}>
+                {serverError 
+                  ? 'Server Offline' 
+                  : (API_BASE.includes('localhost') || API_BASE.includes('127.0.0.1') 
+                      ? 'Local Database Active' 
+                      : 'MongoDB Cloud Active')}
+              </span>
             </span>
-            <span className="px-1.5 py-0.5 rounded bg-indigo-550/10 text-indigo-550 text-[8px] uppercase tracking-wider font-mono">v1.4</span>
+            <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-500 text-[8px] uppercase tracking-wider font-mono">v1.4</span>
           </div>
         </div>
 
@@ -764,83 +774,125 @@ export default function App() {
           </div>
         </div>
 
-        {/* Dynamic Log Area */}
-        <div className="flex-1 p-6 flex flex-col min-h-0 text-left">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <Activity className="h-3.5 w-3.5 text-indigo-500" />
-            <h3 className={`text-[9px] uppercase tracking-wider font-extrabold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>REAL-TIME SYSTEM AUDIT</h3>
-          </div>
-          <div className={`flex-1 overflow-y-auto rounded-xl p-3 border font-mono text-[9px] space-y-2.5 min-h-[120px] leading-relaxed transition-all ${
-            isDark ? 'bg-slate-950/80 border-slate-900 text-slate-400' : 'bg-slate-100 border-slate-150 text-slate-600'
-          }`}>
-            {logs.map(log => (
-              <div key={log.id} className="border-b border-slate-800/10 pb-1.5 last:border-0 last:pb-0">
-                <span className="text-indigo-400 mr-1.5">[{log.time}]</span>
-                <span>{log.text}</span>
-              </div>
-            ))}
-            {logs.length === 0 && (
-              <div className="h-full flex items-center justify-center text-center text-slate-500 py-10 font-sans text-[10px]">
-                Watch logs populate live when editing board cards!
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Export & Import Full-Stack Database Backup Systems */}
-        <div className="px-6 py-3 border-t border-inherit space-y-2 text-left">
-          <h3 className={`text-[9px] uppercase tracking-wider font-extrabold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>REPORTS & WORKSPACE BACKUPS</h3>
+        {/* Collapsible SaaS Console Trigger */}
+        <div className={`px-6 py-3 border-b border-inherit flex items-center justify-between transition-all ${
+          showDevConsole 
+            ? (isDark ? 'bg-indigo-950/15' : 'bg-indigo-50/20') 
+            : ''
+        }`}>
+          <span className="flex items-center gap-2">
+            <Terminal className={`h-4 w-4 ${showDevConsole ? 'text-indigo-500 animate-pulse' : 'text-slate-450'}`} />
+            <span className={`text-[10px] font-extrabold uppercase tracking-wider ${
+              showDevConsole 
+                ? 'text-indigo-550' 
+                : (isDark ? 'text-slate-400' : 'text-slate-500')
+            }`}>
+              Developer Suite
+            </span>
+          </span>
           
-          {/* Backup Row */}
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={handleExportWorkspace}
-              className={`flex items-center justify-center gap-1 py-2 rounded-xl border font-bold text-[10px] transition-all cursor-pointer ${
-                isDark 
-                  ? 'bg-slate-950/60 hover:bg-slate-900 border-slate-900 hover:border-slate-800 text-slate-300' 
-                  : 'bg-slate-550 hover:bg-slate-100 border-slate-200 hover:border-slate-300 text-slate-650 shadow-sm'
-              }`}
-              title="Backup entire Board to JSON file"
-            >
-              <Download className="h-3 w-3 text-indigo-500" />
-              Backup (JSON)
-            </button>
-
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className={`flex items-center justify-center gap-1 py-2 rounded-xl border font-bold text-[10px] transition-all cursor-pointer ${
-                isDark 
-                  ? 'bg-slate-950/60 hover:bg-slate-900 border-slate-900 hover:border-slate-800 text-slate-300' 
-                  : 'bg-slate-555 hover:bg-slate-100 border-slate-200 hover:border-slate-300 text-slate-650 shadow-sm'
-              }`}
-              title="Restore board from JSON backup file"
-            >
-              <Upload className="h-3 w-3 text-emerald-500" />
-              Restore
-            </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleImportWorkspace} 
-              accept=".json" 
-              className="hidden" 
-            />
-          </div>
-
-          {/* Excel Export Row */}
           <button
-            onClick={handleExportExcel}
-            className={`w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-bold text-[10px] transition-all cursor-pointer ${
-              isDark 
-                ? 'bg-slate-950/80 hover:bg-slate-900 border-slate-900 hover:border-slate-850 text-slate-250 shadow-md' 
-                : 'bg-emerald-50 hover:bg-emerald-100/70 border-emerald-200/50 hover:border-emerald-300 text-emerald-700 shadow-sm shadow-emerald-500/5'
+            onClick={() => setShowDevConsole(!showDevConsole)}
+            className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
+              showDevConsole
+                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
+                : (isDark 
+                    ? 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200' 
+                    : 'bg-white border-slate-200 text-slate-500 hover:text-slate-700 shadow-sm')
             }`}
-            title="Export tasks list spreadsheet report for Microsoft Excel"
           >
-            <Sparkles className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
-            Export Excel Report (CSV)
+            {showDevConsole ? 'Hide' : 'Configure'}
           </button>
         </div>
+
+        {showDevConsole ? (
+          <>
+            {/* Dynamic Log Area */}
+            <div className="flex-1 p-6 flex flex-col min-h-0 text-left">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <Activity className="h-3.5 w-3.5 text-indigo-500 animate-pulse" />
+                <h3 className={`text-[9px] uppercase tracking-wider font-extrabold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>REAL-TIME SYSTEM AUDIT</h3>
+              </div>
+              <div className={`h-28 overflow-y-auto rounded-xl p-3 border font-mono text-[9px] space-y-2.5 leading-relaxed transition-all ${
+                isDark ? 'bg-slate-950/80 border-slate-900 text-slate-400' : 'bg-slate-100 border-slate-150 text-slate-600'
+              }`}>
+                {logs.map(log => (
+                  <div key={log.id} className="border-b border-slate-800/10 pb-1.5 last:border-0 last:pb-0">
+                    <span className="text-indigo-400 mr-1.5">[{log.time}]</span>
+                    <span>{log.text}</span>
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <div className="h-full flex items-center justify-center text-center text-slate-500 py-10 font-sans text-[10px]">
+                    Watch logs populate live when editing board cards!
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Export & Import Full-Stack Database Backup Systems */}
+            <div className="px-6 py-3 border-t border-inherit space-y-2 text-left bg-slate-950/5">
+              <h3 className={`text-[9px] uppercase tracking-wider font-extrabold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>REPORTS & WORKSPACE BACKUPS</h3>
+              
+              {/* Backup Row */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleExportWorkspace}
+                  className={`flex items-center justify-center gap-1 py-2 rounded-xl border font-bold text-[10px] transition-all cursor-pointer ${
+                    isDark 
+                      ? 'bg-slate-950/60 hover:bg-slate-900 border-slate-900 hover:border-slate-800 text-slate-300' 
+                      : 'bg-white hover:bg-slate-100 border-slate-200 hover:border-slate-300 text-slate-600 shadow-sm'
+                  }`}
+                  title="Backup entire Board to JSON file"
+                >
+                  <Download className="h-3 w-3 text-indigo-500" />
+                  Backup (JSON)
+                </button>
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`flex items-center justify-center gap-1 py-2 rounded-xl border font-bold text-[10px] transition-all cursor-pointer ${
+                    isDark 
+                      ? 'bg-slate-950/60 hover:bg-slate-900 border-slate-900 hover:border-slate-800 text-slate-300' 
+                      : 'bg-white hover:bg-slate-100 border-slate-200 hover:border-slate-300 text-slate-600 shadow-sm'
+                  }`}
+                  title="Restore board from JSON backup file"
+                >
+                  <Upload className="h-3 w-3 text-emerald-500" />
+                  Restore
+                </button>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleImportWorkspace} 
+                  accept=".json" 
+                  className="hidden" 
+                />
+              </div>
+
+              {/* Excel Export Row */}
+              <button
+                onClick={handleExportExcel}
+                className={`w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-bold text-[10px] transition-all cursor-pointer ${
+                  isDark 
+                    ? 'bg-slate-950/80 hover:bg-slate-900 border-slate-900 hover:border-slate-850 text-slate-200 shadow-md' 
+                    : 'bg-emerald-50 hover:bg-emerald-100/70 border-emerald-200/50 hover:border-emerald-300 text-emerald-700 shadow-sm shadow-emerald-500/5'
+                }`}
+                title="Export tasks list spreadsheet report for Microsoft Excel"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-emerald-500 animate-pulse" />
+                Export Excel Report (CSV)
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col justify-center items-center p-6 text-center text-slate-500 space-y-2">
+            <ClipboardList className={`h-8 w-8 ${isDark ? 'text-slate-800' : 'text-slate-200'} stroke-[1.5]`} />
+            <p className={`text-[10px] max-w-[180px] font-medium leading-relaxed ${isDark ? 'text-slate-750' : 'text-slate-400'}`}>
+              Enterprise Workspaces connected and operating in production state.
+            </p>
+          </div>
+        )}
 
         {/* Theme Switch & Sidebar Footer */}
         <div className="p-6 border-t border-inherit flex items-center justify-between">
