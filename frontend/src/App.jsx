@@ -924,6 +924,7 @@ export default function App() {
               }`}
             />
           </div>
+        </div>
 
           {/* Core Controls */}
           <div className="flex flex-wrap items-center gap-3 justify-start xl:justify-end">
