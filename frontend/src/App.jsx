@@ -700,6 +700,9 @@ export default function App() {
     .filter(t => t.columnId === doneColumnId || columns.find(c => c.id === t.columnId)?.title.toLowerCase().includes('done'))
     .reduce((sum, t) => sum + (t.storyPoints || 0), 0);
 
+  const completedTasksCount = tasks.filter(t => t.columnId === doneColumnId || columns.find(c => c.id === t.columnId)?.title.toLowerCase().includes('done')).length;
+  const completedPercent = totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0;
+
   // Overdue count
   const overdueCount = tasks.filter(t => isOverdue(t.dueDate, t.columnId)).length;
 
@@ -776,8 +779,60 @@ export default function App() {
           </div>
         </div>
 
-        {/* Sidebar Spacer pushing footer to bottom */}
-        <div className="flex-1" />
+        {/* Dynamic Sprint Progress & Active Team Collaborators */}
+        <div className="flex-1 p-6 space-y-6 text-left overflow-y-auto">
+          {/* Sprint progress card */}
+          <div className={`p-4 rounded-2xl border transition-all duration-300 ${
+            isDark ? 'bg-slate-950/20 border-slate-900/60' : 'bg-slate-50/50 border-slate-150'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-[9px] uppercase tracking-wider font-extrabold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Active Sprint</span>
+              <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-500 text-[8px] font-black uppercase font-mono tracking-wide">Sprint 1.4</span>
+            </div>
+            <h4 className="text-xs font-black tracking-tight mb-2.5">🚀 SaaS Launch Sprint</h4>
+            
+            {/* Progress Bar */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[9px] font-black">
+                <span className={isDark ? 'text-slate-450' : 'text-slate-500'}>Progress</span>
+                <span className="text-indigo-550 font-mono">{completedPercent}%</span>
+              </div>
+              <div className={`w-full rounded-full h-1.5 overflow-hidden ${isDark ? 'bg-slate-900' : 'bg-slate-150'}`}>
+                <div 
+                  className="bg-gradient-to-r from-indigo-500 to-emerald-400 h-1.5 rounded-full transition-all duration-700 ease-out" 
+                  style={{ width: `${completedPercent}%` }} 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Team Collaborators block */}
+          <div className="space-y-3">
+            <h4 className={`text-[9px] uppercase tracking-wider font-extrabold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Workspace Team</h4>
+            <div className="flex items-center gap-4">
+              {/* Overlapping glowing initials avatars */}
+              <div className="flex -space-x-2.5">
+                {ASSIGNEES.map((u, idx) => (
+                  <div 
+                    key={u.id} 
+                    className={`h-7.5 w-7.5 rounded-full border-2 ${
+                      isDark ? 'border-slate-950' : 'border-white'
+                    } flex items-center justify-center text-[9px] font-black tracking-tighter shadow-md hover:scale-110 active:scale-95 transition-transform duration-300 select-none cursor-pointer ${u.color}`}
+                    title={u.name}
+                    style={{ zIndex: 10 + idx }}
+                  >
+                    {u.initials}
+                  </div>
+                ))}
+              </div>
+              
+              <div className="text-left leading-normal">
+                <p className="text-[10px] font-black tracking-tight">5 Active Devs</p>
+                <p className={`text-[8px] font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Syncing with live cloud</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Theme Switch & Sidebar Footer */}
         <div className="p-6 border-t border-inherit flex items-center justify-between">
