@@ -26,9 +26,9 @@ import {
   LifeBuoy
 } from 'lucide-react';
 
-const API_BASE = window.location.port && window.location.port !== '5000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.port && window.location.port !== '5000'
   ? 'http://localhost:5000/api'
-  : '/api';
+  : '/api');
 
 // Static Assignees Data for professional Agile workspace feel
 const ASSIGNEES = [
