@@ -34,7 +34,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.port && w
   : '/api');
 
 // Static Assignees Data for professional Agile workspace feel
-const ASSIGNEES = [
+const DEFAULT_ASSIGNEES = [
   { id: 'usr-1', name: 'Amit Sharma', initials: 'AS', color: 'from-orange-400 to-amber-500 bg-gradient-to-br text-white' },
   { id: 'usr-2', name: 'John Doe', initials: 'JD', color: 'from-purple-500 to-indigo-600 bg-gradient-to-br text-white' },
   { id: 'usr-3', name: 'Sophia Lee', initials: 'SL', color: 'from-emerald-400 to-teal-500 bg-gradient-to-br text-white' },
@@ -42,7 +42,79 @@ const ASSIGNEES = [
   { id: 'usr-5', name: 'Kabir Dev', initials: 'KD', color: 'from-cyan-400 to-blue-500 bg-gradient-to-br text-white' }
 ];
 
+const GRADIENT_COLORS = [
+  'from-orange-400 to-amber-500 bg-gradient-to-br text-white',
+  'from-purple-500 to-indigo-600 bg-gradient-to-br text-white',
+  'from-emerald-400 to-teal-500 bg-gradient-to-br text-white',
+  'from-rose-400 to-pink-500 bg-gradient-to-br text-white',
+  'from-cyan-400 to-blue-500 bg-gradient-to-br text-white',
+  'from-indigo-500 to-purple-650 bg-gradient-to-br text-white',
+  'from-fuchsia-500 to-pink-650 bg-gradient-to-br text-white',
+  'from-lime-400 to-emerald-500 bg-gradient-to-br text-white'
+];
+
 export default function App() {
+  const [assignees, setAssignees] = useState(() => {
+    const saved = localStorage.getItem('apex_task_assignees');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return DEFAULT_ASSIGNEES;
+  });
+
+  const ASSIGNEES = assignees;
+
+  const [newMemberName, setNewMemberName] = useState('');
+
+  const handleAddMember = (e) => {
+    e.preventDefault();
+    if (!newMemberName.trim()) return;
+
+    const words = newMemberName.trim().split(/\s+/);
+    let initials = '';
+    if (words.length > 0) {
+      if (words.length === 1) {
+        initials = words[0].substring(0, 2).toUpperCase();
+      } else {
+        initials = (words[0][0] + words[words.length - 1][0]).toUpperCase();
+      }
+    }
+
+    const color = GRADIENT_COLORS[assignees.length % GRADIENT_COLORS.length];
+    
+    const newMember = {
+      id: `usr-${Date.now()}`,
+      name: newMemberName.trim(),
+      initials,
+      color
+    };
+
+    const updated = [...assignees, newMember];
+    setAssignees(updated);
+    localStorage.setItem('apex_task_assignees', JSON.stringify(updated));
+    setNewMemberName('');
+    addToast(`👥 Team member "${newMember.name}" added successfully!`);
+  };
+
+  const handleRemoveMember = (id) => {
+    if (assignees.length <= 1) {
+      addToast("⚠️ Workspace must have at least 1 active team member!", "error");
+      return;
+    }
+
+    const memberToRemove = assignees.find(u => u.id === id);
+    const updated = assignees.filter(u => u.id !== id);
+    setAssignees(updated);
+    localStorage.setItem('apex_task_assignees', JSON.stringify(updated));
+    if (memberToRemove) {
+      addToast(`🗑️ Team member "${memberToRemove.name}" removed.`);
+    }
+  };
+
   const [columns, setColumns] = useState([]);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1172,7 +1244,7 @@ export default function App() {
                           >
                             {/* Tags & Story Point badge header */}
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
                                   task.category === 'Bug' 
                                     ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20' 
@@ -1193,14 +1265,30 @@ export default function App() {
                                   🎫 {task.ticketId || 'APEX-100'}
                                 </span>
 
+                                {/* Dynamic Task Status Pill with visual glowing pulse */}
+                                {(() => {
+                                  const isDone = task.columnId === 'col-done' || columns.find(c => c.id === task.columnId)?.title.toLowerCase().includes('done');
+                                  const status = isDone 
+                                    ? { text: 'Completed', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20', dot: 'bg-emerald-500' }
+                                    : (taskOverdue 
+                                        ? { text: 'Overdue', color: 'bg-rose-500/10 text-rose-550 border-rose-500/20', dot: 'bg-rose-500 animate-pulse' }
+                                        : (columns.find(c => c.id === task.columnId)?.title.toLowerCase().includes('progress') || columns.find(c => c.id === task.columnId)?.title.toLowerCase().includes('active')
+                                            ? { text: 'Active', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20', dot: 'bg-amber-500 animate-ping' }
+                                            : { text: 'Planned', color: 'bg-indigo-500/10 text-indigo-550 border-indigo-500/20', dot: 'bg-indigo-550' }));
+                                  return (
+                                    <span className={`px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase border flex items-center gap-1.5 transition-colors duration-300 ${status.color}`}>
+                                      <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                                      {status.text}
+                                    </span>
+                                  );
+                                })()}
+
                                 {task.isApproved && (
                                   <span className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-amber-500/10 text-amber-500 border border-amber-500/30 flex items-center gap-0.5 shadow-sm shadow-amber-500/5 animate-pulse">
                                     ⭐ Approved
                                   </span>
                                 )}
-                              </div>
-
-                              <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-bold font-mono border ${
+              className={`px-1.5 py-0.5 rounded-full text-[8px] font-bold font-mono border ${
                                 isDark ? 'bg-slate-950 border-slate-850 text-slate-450' : 'bg-slate-100 border-slate-200 text-slate-500'
                               }`}>
                                 {task.storyPoints || 1} SP
@@ -1213,10 +1301,23 @@ export default function App() {
                                 {task.title}
                               </h4>
                               {task.description && (
-                                <p className={`text-[10px] line-clamp-2 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-550'}`}>
+                                <p className={`text-[10px] line-clamp-2 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-555'}`}>
                                   {task.description}
                                 </p>
                               )}
+                            </div>
+
+                            {/* Primary Assignee Lead Label */}
+                            <div className="flex items-center gap-1 text-[9.5px] font-bold">
+                              <span className="text-slate-400 font-extrabold text-[9px] uppercase tracking-wider">Lead:</span>
+                              <span className={`px-1.5 py-0.5 rounded-md font-extrabold flex items-center gap-1 ${
+                                isDark ? 'bg-slate-950 text-slate-300' : 'bg-slate-50 text-slate-700'
+                              }`}>
+                                <span className={`h-3 w-3 rounded-full flex items-center justify-center text-[6px] font-black ${assignee.color}`}>
+                                  {assignee.initials}
+                                </span>
+                                {assignee.name}
+                              </span>
                             </div>
 
                             {/* Due Date Overdue Warnings System */}
@@ -1234,8 +1335,17 @@ export default function App() {
                             {/* Subtask progress bar */}
                             {totalSubs > 0 && (
                               <div className="space-y-1.5 pt-1">
-                                <div className={`flex justify-between text-[8px] font-black ${isDark ? 'text-slate-500' : 'text-slate-455'}`}>
-                                  <span>SUBTASKS</span>
+                                <div className={`flex justify-between items-center text-[8px] font-black ${isDark ? 'text-slate-500' : 'text-slate-455'}`}>
+                                  <span className="flex items-center gap-1">
+                                    <span>SUBTASKS</span>
+                                    <span className={`px-1 rounded-[4px] text-[7.5px] uppercase font-black font-mono ${
+                                      totalSubs - doneSubs === 0 
+                                        ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                                        : 'bg-amber-500/10 text-amber-500 border border-amber-500/20 animate-pulse'
+                                    }`}>
+                                      {totalSubs - doneSubs === 0 ? '✅ Done' : `⏳ ${totalSubs - doneSubs} Pending`}
+                                    </span>
+                                  </span>
                                   <span>{doneSubs}/{totalSubs} ({Math.round((doneSubs/totalSubs)*100)}%)</span>
                                 </div>
                                 <div className={`w-full ${isDark ? 'bg-slate-850' : 'bg-slate-100'} rounded-full h-1 overflow-hidden transition-colors`}>
@@ -2145,6 +2255,62 @@ export default function App() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* Workspace Dynamic Team Manager */}
+              <div className="space-y-2.5 border-t pt-4 border-slate-500/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5 text-indigo-500" />
+                    <h4 className={`text-[9px] uppercase tracking-wider font-extrabold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Workspace Team Manager</h4>
+                  </div>
+                  <span className="text-[8px] font-mono font-bold text-slate-400 bg-slate-500/5 px-1.5 py-0.5 rounded-md">{assignees.length} Members</span>
+                </div>
+
+                {/* Team members list */}
+                <div className={`max-h-32 overflow-y-auto rounded-xl p-2.5 border space-y-1.5 ${
+                  isDark ? 'bg-slate-950/60 border-slate-850/70' : 'bg-slate-50/70 border-slate-150'
+                }`}>
+                  {assignees.map(u => (
+                    <div key={u.id} className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-500/5 transition-colors">
+                      <div className="flex items-center gap-2 text-xs font-bold">
+                        <div className={`h-6 w-6 rounded-full flex items-center justify-center text-[8px] font-black ${u.color}`}>
+                          {u.initials}
+                        </div>
+                        <span className={isDark ? 'text-slate-350' : 'text-slate-700'}>{u.name}</span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveMember(u.id)}
+                        className={`p-1 rounded cursor-pointer transition-colors ${
+                          isDark ? 'text-slate-500 hover:text-rose-450 hover:bg-slate-900' : 'text-slate-400 hover:text-rose-600 hover:bg-slate-105'
+                        }`}
+                        title="Remove member"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add member form */}
+                <form onSubmit={handleAddMember} className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter full name..."
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    className={`flex-1 border rounded-xl py-2 px-3 text-xs focus:outline-none focus:border-indigo-500 transition-all ${
+                      isDark ? 'bg-slate-955 border-slate-805 text-slate-300' : 'bg-slate-50 border-slate-150 text-slate-700 focus:bg-white'
+                    }`}
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-md shadow-indigo-500/10 cursor-pointer uppercase tracking-wider"
+                  >
+                    Add
+                  </button>
+                </form>
               </div>
 
               {/* Export & Import workspace section */}
