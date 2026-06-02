@@ -25,7 +25,8 @@ import {
   Inbox,
   LifeBuoy,
   Terminal,
-  Settings
+  Settings,
+  Menu
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.port && window.location.port !== '5000'
@@ -71,6 +72,7 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [targetColumnId, setTargetColumnId] = useState('');
   
   // Form states for new task
@@ -711,13 +713,31 @@ export default function App() {
       isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-800'
     } font-sans transition-colors duration-300`}>
       
+      {/* Mobile Sidebar Backdrop Overlay */}
+      {isMobileSidebarOpen && (
+        <div 
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs md:hidden"
+        />
+      )}
+
       {/* 1. LEFT SIDEBAR PANEL (GLOWING APP SIDEBAR) */}
-      <aside className={`w-80 h-full flex flex-col justify-between border-r ${
-        isDark ? 'bg-slate-900/60 border-slate-900' : 'bg-white border-slate-200'
-      } backdrop-blur-md z-30 transition-colors duration-300 relative`}>
+      <aside className={`fixed md:relative top-0 left-0 h-full w-80 md:flex flex-col justify-between border-r ${
+        isDark ? 'bg-slate-900 border-slate-900 text-slate-300' : 'bg-white border-slate-200 shadow-xl md:shadow-none'
+      } z-50 transition-transform duration-300 ${
+        isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      } ${isMobileSidebarOpen ? 'flex' : 'hidden md:flex'}`}>
         
         {/* Sidebar Header Title */}
-        <div className="p-6 border-b border-inherit space-y-4">
+        <div className="p-6 border-b border-inherit space-y-4 relative">
+          {/* Close button for mobile views */}
+          <button 
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="md:hidden absolute top-4 right-4 p-1.5 rounded-lg border border-slate-500/10 hover:bg-slate-500/5 cursor-pointer text-slate-400 hover:text-slate-650 dark:hover:text-slate-200"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <ClipboardList className="h-5.5 w-5.5 text-white" />
@@ -869,20 +889,34 @@ export default function App() {
       <main className="flex-1 h-full flex flex-col overflow-hidden relative">
         
         {/* Dynamic Top Navbar with filters */}
-        <nav className={`px-8 py-5 border-b flex flex-col xl:flex-row xl:items-center justify-between gap-4 z-20 transition-colors duration-300 ${
+        <nav className={`px-4 md:px-8 py-5 border-b flex flex-col xl:flex-row xl:items-center justify-between gap-4 z-20 transition-colors duration-300 ${
           isDark ? 'bg-slate-950/80 border-slate-900 text-slate-100' : 'bg-white/80 border-slate-200 text-slate-800'
         } backdrop-blur-md`}>
           
-          {/* Quick Search */}
-          <div className="relative w-full max-w-xs">
-            <span className={`absolute inset-y-0 left-0 pl-3.5 flex items-center ${isDark ? 'text-slate-550' : 'text-slate-400'}`}>
-              <Search className="h-4 w-4" />
-            </span>
-            <input
-              type="text"
-              placeholder="Search tasks..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+          {/* Quick Search & Mobile Menu Button */}
+          <div className="flex items-center gap-2.5 w-full max-w-xs">
+            {/* Mobile Sidebar Hamburger Toggle */}
+            <button
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className={`md:hidden flex items-center justify-center p-2.5 border rounded-xl transition-all cursor-pointer hover:scale-105 active:scale-95 ${
+                isDark 
+                  ? 'bg-slate-900 border-slate-850 text-slate-400 hover:text-slate-200' 
+                  : 'bg-slate-50 border-slate-150 text-slate-655 hover:bg-slate-100 shadow-sm'
+              }`}
+              title="Open Navigation"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+
+            <div className="relative w-full">
+              <span className={`absolute inset-y-0 left-0 pl-3.5 flex items-center ${isDark ? 'text-slate-550' : 'text-slate-400'}`}>
+                <Search className="h-4 w-4" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               className={`w-full border rounded-xl py-2 pl-10 pr-4 text-xs transition-all focus:outline-none focus:border-indigo-500 ${
                 isDark 
                   ? 'bg-slate-900 border-slate-850 text-slate-300 placeholder-slate-550' 
@@ -1014,9 +1048,9 @@ export default function App() {
         </nav>
 
         {/* Adaptive Kanban Scrollable Board Area */}
-        <div className="flex-1 p-8 overflow-x-auto overflow-y-hidden select-none relative">
+        <div className="flex-1 p-4 md:p-8 overflow-x-auto overflow-y-hidden select-none relative scrollbar-thin snap-x snap-mandatory">
           
-          <div className="flex items-start gap-6 h-full min-h-[450px]">
+          <div className="flex items-start gap-4 md:gap-6 h-full min-h-[450px]">
             
             {columns.map(col => {
               const colTasks = tasks.filter(t => t.columnId === col.id);
@@ -1028,7 +1062,7 @@ export default function App() {
                   key={col.id}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, col.id)}
-                  className={`flex-shrink-0 w-80 h-[calc(100vh-160px)] ${
+                  className={`flex-shrink-0 w-[290px] xs:w-80 snap-center snap-always h-[calc(100vh-160px)] ${
                     isDark 
                       ? 'bg-slate-900/30 border-slate-900' 
                       : 'bg-white border-slate-200 shadow-[0_2px_12px_rgba(0,0,0,0.02)]'
