@@ -1,0 +1,16 @@
+# Dependency directories
+node_modules/
+dist/
+build/
+
+# Local databases and secure environment variables
+.env
+.env.local
+backend/db.json
+backend/.env
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

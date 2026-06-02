@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply font-sans antialiased selection:bg-indigo-500/30 overflow-x-hidden transition-colors duration-300;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-400/40 rounded-full hover:bg-slate-500/50 transition-colors;
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+  @apply backdrop-blur-md shadow-xl transition-all duration-300;
+}
+.glass-card {
+  @apply transition-all duration-300;
+}
