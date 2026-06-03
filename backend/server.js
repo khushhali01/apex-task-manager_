@@ -371,6 +371,10 @@ if (fs.existsSync(distPath)) {
   console.log('📡 Development mode enabled: Serve static files separately via client Vite server.');
 }
 
-app.listen(PORT, () => {
-  console.log(`🚀 ApexTask Backend running at http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 ApexTask Backend running at http://localhost:${PORT}`);
+  });
+}
+
+export default app;

@@ -26,14 +26,15 @@ import {
   LifeBuoy,
   Terminal,
   Settings,
-  Menu
+  Menu,
+  ChevronDown
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (window.location.port && window.location.port !== '5000'
   ? 'http://localhost:5000/api'
   : '/api');
 
-// Static Assignees Data for professional Agile workspace feel
+// Static Assignees Data for fallback and backwards compatibility
 const DEFAULT_ASSIGNEES = [
   { id: 'usr-1', name: 'Amit Sharma', initials: 'AS', color: 'from-orange-400 to-amber-500 bg-gradient-to-br text-white' },
   { id: 'usr-2', name: 'John Doe', initials: 'JD', color: 'from-purple-500 to-indigo-600 bg-gradient-to-br text-white' },
@@ -52,6 +53,40 @@ const GRADIENT_COLORS = [
   'from-fuchsia-500 to-pink-650 bg-gradient-to-br text-white',
   'from-lime-400 to-emerald-500 bg-gradient-to-br text-white'
 ];
+
+const getDevAvatar = (nameOrId) => {
+  if (!nameOrId) return { name: 'Unassigned', initials: '👤', color: 'from-slate-400 to-slate-500 bg-gradient-to-br text-white' };
+  
+  const nameStr = String(nameOrId).trim();
+  
+  // If it's a legacy usr-ID from seed data, map to static fallback
+  const matched = DEFAULT_ASSIGNEES.find(u => u.id === nameStr);
+  if (matched) return matched;
+
+  const words = nameStr.split(/\s+/);
+  let initials = '';
+  if (words.length > 0 && words[0]) {
+    if (nameStr.length <= 2) {
+      initials = nameStr.toUpperCase();
+    } else if (words.length === 1) {
+      initials = words[0].substring(0, 2).toUpperCase();
+    } else {
+      initials = (words[0][0] + words[words.length - 1][0]).toUpperCase();
+    }
+  } else {
+    initials = '👤';
+  }
+
+  // Generate consistent color hash based on name
+  let hash = 0;
+  for (let i = 0; i < nameStr.length; i++) {
+    hash = nameStr.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const colorIndex = Math.abs(hash) % GRADIENT_COLORS.length;
+  const color = GRADIENT_COLORS[colorIndex];
+
+  return { name: nameStr, initials, color };
+};
 
 export default function App() {
   const [assignees, setAssignees] = useState(() => {
@@ -127,6 +162,7 @@ export default function App() {
   const [reviewerFilter, setReviewerFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
   const [showOverdueOnly, setShowOverdueOnly] = useState(false);
+  const [activeDropdownFilter, setActiveDropdownFilter] = useState(null); // null | 'assignee' | 'role' | 'manager' | 'priority'
 
   // Live Toasts State
   const [toasts, setToasts] = useState([]);
@@ -777,8 +813,18 @@ export default function App() {
   const completedTasksCount = tasks.filter(t => t.columnId === doneColumnId || columns.find(c => c.id === t.columnId)?.title.toLowerCase().includes('done')).length;
   const completedPercent = totalTasks > 0 ? Math.round((completedTasksCount / totalTasks) * 100) : 0;
 
-  // Overdue count
+  // Overdue Tasks count
   const overdueCount = tasks.filter(t => isOverdue(t.dueDate, t.columnId)).length;
+
+  // Dynamic unique collaborator names from tasks and defaults
+  const uniqueNames = Array.from(new Set([
+    ...ASSIGNEES.map(u => u.name),
+    ...tasks.map(t => getDevAvatar(t.assigneeId).name),
+    ...tasks.map(t => getDevAvatar(t.frontendDevId).name),
+    ...tasks.map(t => getDevAvatar(t.backendDevId).name),
+    ...tasks.map(t => getDevAvatar(t.qaDevId).name),
+    ...tasks.map(t => getDevAvatar(t.reviewerId).name)
+  ])).filter(Boolean).filter(name => name !== 'Unassigned');
 
   return (
     <div className={`h-screen w-screen flex overflow-hidden ${
@@ -989,93 +1035,381 @@ export default function App() {
                 placeholder="Search tasks..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full border rounded-xl py-2 pl-10 pr-4 text-xs transition-all focus:outline-none focus:border-indigo-500 ${
-                isDark 
-                  ? 'bg-slate-900 border-slate-850 text-slate-300 placeholder-slate-550' 
-                  : 'bg-slate-50 border-slate-150 text-slate-700 placeholder-slate-400 focus:bg-white'
-              }`}
-            />
+                className={`w-full border rounded-xl py-2 pl-10 pr-4 text-xs transition-all focus:outline-none focus:border-indigo-500 ${
+                  isDark 
+                    ? 'bg-slate-900 border-slate-850 text-slate-300 placeholder-slate-550' 
+                    : 'bg-slate-50 border-slate-150 text-slate-700 placeholder-slate-400 focus:bg-white'
+                }`}
+              />
+            </div>
           </div>
-        </div>
 
           {/* Core Controls */}
           <div className="flex flex-wrap items-center gap-3 justify-start xl:justify-end">
             
-            {/* Assignee Filter drop down */}
-            <div className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-colors duration-300 ${
-              isDark ? 'bg-slate-900 border-slate-850 text-slate-400' : 'bg-slate-55 bg-slate-50 border-slate-150 text-slate-600'
-            }`}>
-              <User className="h-3 w-3 text-indigo-500" />
-              <span className="font-bold">ASSIGNEE:</span>
-              <select
-                value={assigneeFilter}
-                onChange={(e) => setAssigneeFilter(e.target.value)}
-                className="bg-transparent focus:outline-none cursor-pointer font-extrabold text-current"
+            {/* Assignee Filter Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setActiveDropdownFilter(activeDropdownFilter === 'assignee' ? null : 'assignee')}
+                className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-all duration-250 cursor-pointer hover:shadow-md hover:border-indigo-500/30 ${
+                  activeDropdownFilter === 'assignee' 
+                    ? 'border-indigo-500 bg-indigo-500/5 text-indigo-500 font-extrabold shadow-sm' 
+                    : (isDark ? 'bg-slate-900 border-slate-850 text-slate-350 hover:bg-slate-850' : 'bg-slate-50 border-slate-150 text-slate-650 hover:bg-slate-100')
+                }`}
               >
-                <option value="all" className={isDark ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-800'}>All Team</option>
-                {ASSIGNEES.map(u => (
-                  <option key={u.id} value={u.id} className={isDark ? 'bg-slate-900 text-slate-250' : 'bg-white text-slate-850'}>
-                    👤 {u.name}
-                  </option>
-                ))}
-              </select>
+                <User className="h-3 w-3 text-indigo-500" />
+                <span className="font-bold">ASSIGNEE:</span>
+                <span className="font-extrabold text-indigo-600 dark:text-indigo-400">
+                  {assigneeFilter === 'all' ? 'All Team' : assigneeFilter}
+                </span>
+                <ChevronDown className={`h-3 w-3 text-indigo-500 transition-transform duration-200 ${activeDropdownFilter === 'assignee' ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {activeDropdownFilter === 'assignee' && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setActiveDropdownFilter(null)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                      transition={{ duration: 0.12 }}
+                      className={`absolute left-0 mt-2 w-48 rounded-xl border p-1 shadow-2xl z-20 transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-150 text-slate-800'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssigneeFilter('all');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          assigneeFilter === 'all' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>All Team</span>
+                        {assigneeFilter === 'all' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      {uniqueNames.map(name => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            setAssigneeFilter(name);
+                            setActiveDropdownFilter(null);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                            assigneeFilter === name 
+                              ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                              : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span className="h-4 w-4 rounded-full overflow-hidden flex items-center justify-center bg-indigo-500/10 text-indigo-500 font-mono text-[8px] font-bold">
+                              {name.split(' ').map(n => n[0]).join('')}
+                            </span>
+                            {name}
+                          </span>
+                          {assigneeFilter === name && <span className="text-[10px]">✓</span>}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Squad Role Filter dropdown */}
-            <div className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-colors duration-300 ${
-              isDark ? 'bg-slate-900 border-slate-850 text-slate-400' : 'bg-slate-50 border-slate-150 text-slate-600'
-            }`}>
-              <SlidersHorizontal className="h-3 w-3 text-indigo-500" />
-              <span className="font-bold">SQUAD ROLE:</span>
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                className="bg-transparent focus:outline-none cursor-pointer font-extrabold text-current"
+            {/* Squad Role Filter Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setActiveDropdownFilter(activeDropdownFilter === 'role' ? null : 'role')}
+                className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-all duration-250 cursor-pointer hover:shadow-md hover:border-indigo-500/30 ${
+                  activeDropdownFilter === 'role' 
+                    ? 'border-indigo-500 bg-indigo-500/5 text-indigo-500 font-extrabold shadow-sm' 
+                    : (isDark ? 'bg-slate-900 border-slate-850 text-slate-350 hover:bg-slate-850' : 'bg-slate-50 border-slate-150 text-slate-650 hover:bg-slate-100')
+                }`}
               >
-                <option value="all" className={isDark ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-805'}>Involved In Any</option>
-                <option value="frontend" className={isDark ? 'bg-slate-900 text-slate-250' : 'bg-white text-slate-850'}>🎨 Frontend Specialist</option>
-                <option value="backend" className={isDark ? 'bg-slate-900 text-slate-250' : 'bg-white text-slate-850'}>⚙️ Backend Specialist</option>
-                <option value="qa" className={isDark ? 'bg-slate-900 text-slate-250' : 'bg-white text-slate-850'}>🧪 QA Tester</option>
-                <option value="reviewer" className={isDark ? 'bg-slate-900 text-slate-250' : 'bg-white text-slate-850'}>💼 Review Lead</option>
-              </select>
+                <SlidersHorizontal className="h-3 w-3 text-indigo-500" />
+                <span className="font-bold">SQUAD ROLE:</span>
+                <span className="font-extrabold text-indigo-650 dark:text-indigo-400">
+                  {roleFilter === 'all' ? 'Involved In Any' : 
+                   roleFilter === 'frontend' ? 'Frontend Dev' :
+                   roleFilter === 'backend' ? 'Backend Dev' :
+                   roleFilter === 'qa' ? 'QA Tester' : 'Review Lead'}
+                </span>
+                <ChevronDown className={`h-3 w-3 text-indigo-500 transition-transform duration-200 ${activeDropdownFilter === 'role' ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {activeDropdownFilter === 'role' && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setActiveDropdownFilter(null)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                      transition={{ duration: 0.12 }}
+                      className={`absolute left-0 mt-2 w-48 rounded-xl border p-1 shadow-2xl z-20 transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-150 text-slate-800'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter('all');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          roleFilter === 'all' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>Involved In Any</span>
+                        {roleFilter === 'all' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter('frontend');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          roleFilter === 'frontend' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>🎨 Frontend Specialist</span>
+                        {roleFilter === 'frontend' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter('backend');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          roleFilter === 'backend' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>⚙️ Backend Specialist</span>
+                        {roleFilter === 'backend' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter('qa');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          roleFilter === 'qa' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>🧪 QA Tester</span>
+                        {roleFilter === 'qa' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoleFilter('reviewer');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          roleFilter === 'reviewer' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>💼 Review Lead</span>
+                        {roleFilter === 'reviewer' && <span className="text-[10px]">✓</span>}
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Reviewer Filter drop down */}
-            <div className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-colors duration-300 ${
-              isDark ? 'bg-slate-900 border-slate-850 text-slate-400' : 'bg-slate-50 border-slate-150 text-slate-600'
-            }`}>
-              <Users className="h-3 w-3 text-indigo-500" />
-              <span className="font-bold">MANAGER:</span>
-              <select
-                value={reviewerFilter}
-                onChange={(e) => setReviewerFilter(e.target.value)}
-                className="bg-transparent focus:outline-none cursor-pointer font-extrabold text-current"
+            {/* Manager Filter Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setActiveDropdownFilter(activeDropdownFilter === 'manager' ? null : 'manager')}
+                className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-all duration-250 cursor-pointer hover:shadow-md hover:border-indigo-500/30 ${
+                  activeDropdownFilter === 'manager' 
+                    ? 'border-indigo-500 bg-indigo-500/5 text-indigo-500 font-extrabold shadow-sm' 
+                    : (isDark ? 'bg-slate-900 border-slate-850 text-slate-350 hover:bg-slate-850' : 'bg-slate-50 border-slate-150 text-slate-655 hover:bg-slate-100')
+                }`}
               >
-                <option value="all" className={isDark ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-800'}>All Leads</option>
-                {ASSIGNEES.map(u => (
-                  <option key={u.id} value={u.id} className={isDark ? 'bg-slate-900 text-slate-250' : 'bg-white text-slate-855'}>
-                    💼 {u.name}
-                  </option>
-                ))}
-              </select>
+                <Users className="h-3 w-3 text-indigo-500" />
+                <span className="font-bold">MANAGER:</span>
+                <span className="font-extrabold text-indigo-650 dark:text-indigo-400">
+                  {reviewerFilter === 'all' ? 'All Leads' : reviewerFilter}
+                </span>
+                <ChevronDown className={`h-3 w-3 text-indigo-500 transition-transform duration-200 ${activeDropdownFilter === 'manager' ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {activeDropdownFilter === 'manager' && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setActiveDropdownFilter(null)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                      transition={{ duration: 0.12 }}
+                      className={`absolute left-0 mt-2 w-48 rounded-xl border p-1 shadow-2xl z-20 transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-150 text-slate-800'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReviewerFilter('all');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          reviewerFilter === 'all' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>All Leads</span>
+                        {reviewerFilter === 'all' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      {uniqueNames.map(name => (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => {
+                            setReviewerFilter(name);
+                            setActiveDropdownFilter(null);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                            reviewerFilter === name 
+                              ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                              : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            💼 {name}
+                          </span>
+                          {reviewerFilter === name && <span className="text-[10px]">✓</span>}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Priority Filter */}
-            <div className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-colors duration-300 ${
-              isDark ? 'bg-slate-900 border-slate-850 text-slate-400' : 'bg-slate-50 border-slate-150 text-slate-600'
-            }`}>
-              <SlidersHorizontal className="h-3 w-3 text-indigo-500" />
-              <span className="font-bold">PRIORITY:</span>
-              <select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="bg-transparent focus:outline-none cursor-pointer font-extrabold text-current"
+            {/* Priority Filter Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setActiveDropdownFilter(activeDropdownFilter === 'priority' ? null : 'priority')}
+                className={`flex items-center gap-2 border px-3 py-1.5 rounded-xl text-[10px] transition-all duration-250 cursor-pointer hover:shadow-md hover:border-indigo-500/30 ${
+                  activeDropdownFilter === 'priority' 
+                    ? 'border-indigo-500 bg-indigo-500/5 text-indigo-500 font-extrabold shadow-sm' 
+                    : (isDark ? 'bg-slate-900 border-slate-850 text-slate-350 hover:bg-slate-850' : 'bg-slate-50 border-slate-150 text-slate-650 hover:bg-slate-100')
+                }`}
               >
-                <option value="all" className={isDark ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-800'}>All Priority</option>
-                <option value="high" className={isDark ? 'bg-slate-900 text-rose-400' : 'bg-white text-rose-600'}>🔴 High Priority</option>
-                <option value="medium" className={isDark ? 'bg-slate-900 text-amber-400' : 'bg-white text-amber-600'}>🟡 Medium Priority</option>
-                <option value="low" className={isDark ? 'bg-slate-900 text-indigo-400' : 'bg-white text-indigo-600'}>🔵 Low Priority</option>
-              </select>
+                <SlidersHorizontal className="h-3 w-3 text-indigo-500" />
+                <span className="font-bold">PRIORITY:</span>
+                <span className="font-extrabold text-indigo-650 dark:text-indigo-400">
+                  {priorityFilter === 'all' ? 'All Priority' :
+                   priorityFilter === 'high' ? 'High' :
+                   priorityFilter === 'medium' ? 'Medium' : 'Low'}
+                </span>
+                <ChevronDown className={`h-3 w-3 text-indigo-500 transition-transform duration-200 ${activeDropdownFilter === 'priority' ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {activeDropdownFilter === 'priority' && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setActiveDropdownFilter(null)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                      transition={{ duration: 0.12 }}
+                      className={`absolute left-0 mt-2 w-40 rounded-xl border p-1 shadow-2xl z-20 transition-all ${
+                        isDark ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-150 text-slate-800'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPriorityFilter('all');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          priorityFilter === 'all' 
+                            ? 'bg-indigo-500/10 text-indigo-500 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>All Priority</span>
+                        {priorityFilter === 'all' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPriorityFilter('high');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          priorityFilter === 'high' 
+                            ? 'bg-rose-500/10 text-rose-550 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>🔴 High Priority</span>
+                        {priorityFilter === 'high' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPriorityFilter('medium');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          priorityFilter === 'medium' 
+                            ? 'bg-amber-500/10 text-amber-555 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>🟡 Medium Priority</span>
+                        {priorityFilter === 'medium' && <span className="text-[10px]">✓</span>}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPriorityFilter('low');
+                          setActiveDropdownFilter(null);
+                        }}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between transition-colors ${
+                          priorityFilter === 'low' 
+                            ? 'bg-indigo-500/10 text-indigo-555 font-extrabold' 
+                            : (isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-50 text-slate-700')
+                        }`}
+                      >
+                        <span>🔵 Low Priority</span>
+                        {priorityFilter === 'low' && <span className="text-[10px]">✓</span>}
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Overdue filter pill */}
@@ -1186,12 +1520,11 @@ export default function App() {
                       {colTasks.map(task => {
                         const totalSubs = task.subtasks?.length || 0;
                         const doneSubs = task.subtasks?.filter(s => s.completed).length || 0;
-                        const assignee = ASSIGNEES.find(u => u.id === task.assigneeId) || ASSIGNEES[0];
-                        
-                        const frontendDev = ASSIGNEES.find(u => u.id === task.frontendDevId) || ASSIGNEES[0];
-                        const backendDev = ASSIGNEES.find(u => u.id === task.backendDevId) || ASSIGNEES[2];
-                        const qaDev = ASSIGNEES.find(u => u.id === task.qaDevId) || ASSIGNEES[3];
-                        const reviewerDev = ASSIGNEES.find(u => u.id === task.reviewerId) || ASSIGNEES[1];
+                        const assignee = getDevAvatar(task.assigneeId);
+                        const frontendDev = getDevAvatar(task.frontendDevId);
+                        const backendDev = getDevAvatar(task.backendDevId);
+                        const qaDev = getDevAvatar(task.qaDevId);
+                        const reviewerDev = getDevAvatar(task.reviewerId);
 
                         const squad = [
                           { role: '🎨 Frontend Dev', user: frontendDev },
@@ -1207,19 +1540,19 @@ export default function App() {
                         const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter;
                         const matchesAssignee = assigneeFilter === 'all' || (
                           roleFilter === 'all' ? (
-                            task.assigneeId === assigneeFilter ||
-                            task.frontendDevId === assigneeFilter ||
-                            task.backendDevId === assigneeFilter ||
-                            task.qaDevId === assigneeFilter ||
-                            task.reviewerId === assigneeFilter
+                            getDevAvatar(task.assigneeId).name === assigneeFilter ||
+                            getDevAvatar(task.frontendDevId).name === assigneeFilter ||
+                            getDevAvatar(task.backendDevId).name === assigneeFilter ||
+                            getDevAvatar(task.qaDevId).name === assigneeFilter ||
+                            getDevAvatar(task.reviewerId).name === assigneeFilter
                           ) :
-                          roleFilter === 'frontend' ? task.frontendDevId === assigneeFilter :
-                          roleFilter === 'backend' ? task.backendDevId === assigneeFilter :
-                          roleFilter === 'qa' ? task.qaDevId === assigneeFilter :
-                          roleFilter === 'reviewer' ? task.reviewerId === assigneeFilter :
-                          task.assigneeId === assigneeFilter
+                          roleFilter === 'frontend' ? getDevAvatar(task.frontendDevId).name === assigneeFilter :
+                          roleFilter === 'backend' ? getDevAvatar(task.backendDevId).name === assigneeFilter :
+                          roleFilter === 'qa' ? getDevAvatar(task.qaDevId).name === assigneeFilter :
+                          roleFilter === 'reviewer' ? getDevAvatar(task.reviewerId).name === assigneeFilter :
+                          getDevAvatar(task.assigneeId).name === assigneeFilter
                         );
-                        const matchesReviewer = reviewerFilter === 'all' || task.reviewerId === reviewerFilter;
+                        const matchesReviewer = reviewerFilter === 'all' || getDevAvatar(task.reviewerId).name === reviewerFilter;
                         const taskOverdue = isOverdue(task.dueDate, task.columnId);
                         const matchesOverdue = !showOverdueOnly || taskOverdue;
                         
@@ -1288,11 +1621,13 @@ export default function App() {
                                     ⭐ Approved
                                   </span>
                                 )}
-              className={`px-1.5 py-0.5 rounded-full text-[8px] font-bold font-mono border ${
-                                isDark ? 'bg-slate-950 border-slate-850 text-slate-450' : 'bg-slate-100 border-slate-200 text-slate-500'
-                              }`}>
-                                {task.storyPoints || 1} SP
-                              </span>
+
+                                <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-bold font-mono border ${
+                                  isDark ? 'bg-slate-950 border-slate-850 text-slate-450' : 'bg-slate-100 border-slate-200 text-slate-500'
+                                }`}>
+                                  {task.storyPoints || 1} SP
+                                </span>
+                              </div>
                             </div>
 
                             {/* Title & Description */}
@@ -1494,7 +1829,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className={`border rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl relative text-left transition-all duration-300 ${
+              className={`border rounded-2xl max-w-4xl w-full p-6 shadow-2xl relative text-left transition-all duration-300 max-h-[90vh] overflow-y-auto ${
                 isDark ? 'bg-slate-900 border-slate-800 text-slate-100 shadow-2xl' : 'bg-white border-slate-100 text-slate-850 shadow-[0_10px_35px_rgba(0,0,0,0.1)]'
               }`}
             >
@@ -1507,194 +1842,210 @@ export default function App() {
                 <X className="h-4 w-4" />
               </button>
 
-              <h3 className={`font-display font-extrabold text-lg ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>Create New Task</h3>
+              <h3 className={`font-display font-extrabold text-lg border-b pb-3 mb-4 ${isDark ? 'text-slate-100 border-slate-800' : 'text-slate-800 border-slate-100'}`}>
+                Create New Task
+              </h3>
 
-              <form onSubmit={handleAddTask} className="space-y-4 text-xs sm:text-sm">
+              <form onSubmit={handleAddTask} className="text-xs sm:text-sm">
                 
-                {/* Title */}
-                <div className="space-y-1">
-                  <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Task Title</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="E.g. Setup express REST endpoints"
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 transition-all ${
-                      isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
-                    }`}
-                  />
+                {/* Two Column Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                  
+                  {/* Left Column (Core Details) */}
+                  <div className="md:col-span-7 space-y-4">
+                    {/* Title */}
+                    <div className="space-y-1">
+                      <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Task Title</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="E.g. Setup express REST endpoints"
+                        value={newTitle}
+                        onChange={(e) => setNewTitle(e.target.value)}
+                        className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 transition-all ${
+                          isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Description */}
+                    <div className="space-y-1">
+                      <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Description</label>
+                      <textarea
+                        placeholder="Write detailed specifications for the task..."
+                        value={newDesc}
+                        onChange={(e) => setNewDesc(e.target.value)}
+                        rows={4}
+                        className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 resize-none transition-all ${
+                          isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right Column (Specifications Sidebar) */}
+                  <div className="md:col-span-5 space-y-5 border-t md:border-t-0 md:border-l pt-5 md:pt-0 pl-0 md:pl-6 border-slate-500/10">
+                    
+                    {/* Task Specifications */}
+                    <div className="space-y-3">
+                      <h4 className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Task Specifications</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400`}>Category Tag</label>
+                          <select
+                            value={newCategory}
+                            onChange={(e) => setNewCategory(e.target.value)}
+                            className={`w-full border rounded-xl py-1.5 px-2.5 focus:outline-none text-[10px] font-bold custom-select ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <option value="Feature">🚀 Feature</option>
+                            <option value="Bug">🐛 Bug Fix</option>
+                            <option value="Frontend">🎨 Frontend</option>
+                            <option value="Backend">⚙️ Backend</option>
+                            <option value="Design">📐 Design</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400`}>Story Points</label>
+                          <select
+                            value={newStoryPoints}
+                            onChange={(e) => setNewStoryPoints(Number(e.target.value))}
+                            className={`w-full border rounded-xl py-1.5 px-2.5 focus:outline-none text-[10px] font-mono font-bold custom-select ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <option value="1">1 SP</option>
+                            <option value="2">2 SP</option>
+                            <option value="3">3 SP</option>
+                            <option value="5">5 SP</option>
+                            <option value="8">8 SP</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400`}>Target Column</label>
+                          <select
+                            value={targetColumnId}
+                            onChange={(e) => setTargetColumnId(e.target.value)}
+                            className={`w-full border rounded-xl py-1.5 px-2.5 focus:outline-none text-[10px] custom-select ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {columns.map(c => (
+                              <option key={c.id} value={c.id} className={isDark ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-850'}>{c.title}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400`}>Priority Level</label>
+                          <select
+                            value={newPriority}
+                            onChange={(e) => setNewPriority(e.target.value)}
+                            className={`w-full border rounded-xl py-1.5 px-2.5 focus:outline-none text-[10px] font-bold custom-select ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <option value="low">🔵 Low Priority</option>
+                            <option value="medium">🟡 Medium Priority</option>
+                            <option value="high">🔴 High Priority</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Due Date */}
+                      <div className="space-y-1">
+                        <label className={`text-[9px] uppercase font-bold text-slate-400`}>Due Date</label>
+                        <input
+                          type="date"
+                          value={newDueDate}
+                          onChange={(e) => setNewDueDate(e.target.value)}
+                          className={`w-full border rounded-xl py-1.5 px-2.5 focus:outline-none text-[10px] font-mono ${
+                            isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Specialist Team Assignees */}
+                    <div className="space-y-3">
+                      <label className={`text-[10px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>👤 Specialist Team Assignees</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400 block`}>🎨 Frontend Dev</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="E.g. Amit Sharma"
+                            value={newFrontendDevId}
+                            onChange={(e) => {
+                              setNewFrontendDevId(e.target.value);
+                              setNewAssigneeId(e.target.value);
+                            }}
+                            className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400 block`}>⚙️ Backend Dev</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="E.g. Sophia Lee"
+                            value={newBackendDevId}
+                            onChange={(e) => setNewBackendDevId(e.target.value)}
+                            className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400 block`}>🧪 QA Tester</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="E.g. Sarah Patel"
+                            value={newQaDevId}
+                            onChange={(e) => setNewQaDevId(e.target.value)}
+                            className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                            }`}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className={`text-[9px] uppercase font-bold text-slate-400 block`}>💼 Review Lead</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="E.g. John Doe"
+                            value={newReviewerId}
+                            onChange={(e) => setNewReviewerId(e.target.value)}
+                            className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                              isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-indigo-500/20 text-xs cursor-pointer"
+                    >
+                      Create Task Card
+                    </button>
+
+                  </div>
+
                 </div>
 
-                {/* Description */}
-                <div className="space-y-1">
-                  <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Description</label>
-                  <textarea
-                    placeholder="Write detailed specifications for the task..."
-                    value={newDesc}
-                    onChange={(e) => setNewDesc(e.target.value)}
-                    rows={2}
-                    className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 resize-none transition-all ${
-                      isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
-                    }`}
-                  />
-                </div>
-
-                {/* Task Squad Specialists Grid */}
-                <div className="grid grid-cols-2 gap-3.5">
-                  <div className="space-y-1">
-                    <label className={`text-[9px] font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>🎨 Frontend Specialist</label>
-                    <select
-                      value={newFrontendDevId}
-                      onChange={(e) => {
-                        setNewFrontendDevId(e.target.value);
-                        setNewAssigneeId(e.target.value); // fallback
-                      }}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
-                        isDark ? 'bg-slate-950 border-slate-805 text-slate-300' : 'bg-slate-55 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {ASSIGNEES.map(u => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className={`text-[9px] font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>⚙️ Backend Specialist</label>
-                    <select
-                      value={newBackendDevId}
-                      onChange={(e) => setNewBackendDevId(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
-                        isDark ? 'bg-slate-950 border-slate-805 text-slate-300' : 'bg-slate-55 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {ASSIGNEES.map(u => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className={`text-[9px] font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>🧪 QA / Tester</label>
-                    <select
-                      value={newQaDevId}
-                      onChange={(e) => setNewQaDevId(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
-                        isDark ? 'bg-slate-950 border-slate-805 text-slate-300' : 'bg-slate-55 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {ASSIGNEES.map(u => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className={`text-[9px] font-black uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>💼 Reviewer Lead</label>
-                    <select
-                      value={newReviewerId}
-                      onChange={(e) => setNewReviewerId(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
-                        isDark ? 'bg-slate-950 border-slate-805 text-slate-300' : 'bg-slate-55 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {ASSIGNEES.map(u => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Due Date Row */}
-                <div className="space-y-1">
-                  <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Due Date</label>
-                  <input
-                    type="date"
-                    value={newDueDate}
-                    onChange={(e) => setNewDueDate(e.target.value)}
-                    className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 transition-all ${
-                      isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-                    }`}
-                  />
-                </div>
-
-                {/* Tags Category & Story Points */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Category Tag</label>
-                    <select
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 transition-all ${
-                        isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      <option value="Feature">🚀 Feature</option>
-                      <option value="Bug">🐛 Bug Fix</option>
-                      <option value="Frontend">🎨 Frontend UI</option>
-                      <option value="Backend">⚙️ Backend Api</option>
-                      <option value="Design">📐 Schema Design</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Agile Story Points</label>
-                    <select
-                      value={newStoryPoints}
-                      onChange={(e) => setNewStoryPoints(Number(e.target.value))}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 transition-all font-bold ${
-                        isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      <option value="1">1 Story Point</option>
-                      <option value="2">2 Story Points</option>
-                      <option value="3">3 Story Points</option>
-                      <option value="5">5 Story Points (Medium)</option>
-                      <option value="8">8 Story Points (Large)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Column & Priority selection */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Target Column</label>
-                    <select
-                      value={targetColumnId}
-                      onChange={(e) => setTargetColumnId(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 transition-all ${
-                        isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      {columns.map(c => (
-                        <option key={c.id} value={c.id} className={isDark ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-850'}>{c.title}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Priority Level</label>
-                    <select
-                      value={newPriority}
-                      onChange={(e) => setNewPriority(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 transition-all font-bold ${
-                        isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
-                      }`}
-                    >
-                      <option value="low">🔵 Low Priority</option>
-                      <option value="medium">🟡 Medium Priority</option>
-                      <option value="high">🔴 High Priority</option>
-                    </select>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-indigo-500/20 text-xs cursor-pointer"
-                >
-                  Create Task Card
-                </button>
               </form>
             </motion.div>
           </div>
@@ -1709,280 +2060,303 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className={`border rounded-2xl max-w-lg w-full p-6 space-y-6 shadow-2xl relative text-left transition-all duration-300 ${
+              className={`border rounded-2xl max-w-4xl w-full p-6 shadow-2xl relative text-left transition-all duration-300 max-h-[90vh] overflow-y-auto ${
                 isDark ? 'bg-slate-900 border-slate-800 text-slate-100 shadow-2xl' : 'bg-white border-slate-100 text-slate-850 shadow-[0_10px_40px_rgba(0,0,0,0.12)]'
               }`}
             >
-              <button
-                onClick={() => setSelectedTask(null)}
-                className={`absolute top-4 right-4 cursor-pointer transition-colors ${
-                  isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                <X className="h-4 w-4" />
-              </button>
-
-              {/* Priority & Categories Editor Header */}
-              <div className={`flex flex-wrap items-center justify-between gap-3 border-b pb-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-                <span className={`text-[10px] font-bold uppercase tracking-widest font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                  SPECIFICATION TICKET: <strong className="text-indigo-500 font-black font-mono">{selectedTask.ticketId || 'APEX-100'}</strong>
+              {/* Header block with ticket ID and close button */}
+              <div className={`flex items-center justify-between border-b pb-3.5 mb-4 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                <span className={`text-xs font-black uppercase tracking-widest font-mono ${isDark ? 'text-slate-400' : 'text-slate-655'}`}>
+                  Specification Ticket: <span className="text-indigo-500 font-extrabold">{selectedTask.ticketId || 'APEX-100'}</span>
                 </span>
-                
-                <div className="flex flex-wrap gap-2">
-                  {/* Frontend Dev selector */}
-                  <select
-                    value={selectedTask.frontendDevId || 'usr-1'}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { 
-                      frontendDevId: e.target.value,
-                      assigneeId: e.target.value 
-                    })}
-                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold border cursor-pointer ${
-                      isDark ? 'bg-slate-950 text-slate-250 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
-                    }`}
-                    title="Frontend Specialist Dev"
-                  >
-                    {ASSIGNEES.map(u => (
-                      <option key={u.id} value={u.id}>🎨 {u.initials}</option>
-                    ))}
-                  </select>
-
-                  {/* Backend Dev selector */}
-                  <select
-                    value={selectedTask.backendDevId || 'usr-3'}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { backendDevId: e.target.value })}
-                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold border cursor-pointer ${
-                      isDark ? 'bg-slate-950 text-slate-250 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
-                    }`}
-                    title="Backend Specialist Dev"
-                  >
-                    {ASSIGNEES.map(u => (
-                      <option key={u.id} value={u.id}>⚙️ {u.initials}</option>
-                    ))}
-                  </select>
-
-                  {/* QA Dev selector */}
-                  <select
-                    value={selectedTask.qaDevId || 'usr-4'}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { qaDevId: e.target.value })}
-                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold border cursor-pointer ${
-                      isDark ? 'bg-slate-950 text-slate-250 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
-                    }`}
-                    title="QA Tester specialist"
-                  >
-                    {ASSIGNEES.map(u => (
-                      <option key={u.id} value={u.id}>🧪 {u.initials}</option>
-                    ))}
-                  </select>
-
-                  {/* Reviewer Lead selector */}
-                  <select
-                    value={selectedTask.reviewerId || 'usr-2'}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { reviewerId: e.target.value })}
-                    className={`px-2 py-0.5 rounded text-[10px] font-extrabold border cursor-pointer ${
-                      isDark ? 'bg-slate-950 text-slate-250 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
-                    }`}
-                    title="Reviewing Manager Lead"
-                  >
-                    {ASSIGNEES.map(u => (
-                      <option key={u.id} value={u.id}>💼 {u.initials}</option>
-                    ))}
-                  </select>
-
-                  {/* Category editor */}
-                  <select
-                    value={selectedTask.category || 'Feature'}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { category: e.target.value })}
-                    className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase border cursor-pointer ${
-                      isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    <option value="Feature">🚀 Feature</option>
-                    <option value="Bug">🐛 Bug Fix</option>
-                    <option value="Frontend">🎨 Frontend UI</option>
-                    <option value="Backend">⚙️ Backend Api</option>
-                    <option value="Design">📐 Schema Design</option>
-                  </select>
-
-                  {/* Story Points editor */}
-                  <select
-                    value={selectedTask.storyPoints || 1}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { storyPoints: Number(e.target.value) })}
-                    className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold border cursor-pointer font-mono ${
-                      isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
-                    }`}
-                  >
-                    <option value="1">1 SP</option>
-                    <option value="2">2 SP</option>
-                    <option value="3">3 SP</option>
-                    <option value="5">5 SP</option>
-                    <option value="8">8 SP</option>
-                  </select>
-
-                  {/* Priority editor */}
-                  <select
-                    value={selectedTask.priority}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { priority: e.target.value })}
-                    className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide border cursor-pointer ${
-                      isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
-                    } ${
-                      selectedTask.priority === 'high' ? 'text-rose-500 border-rose-500/20' :
-                      selectedTask.priority === 'medium' ? 'text-amber-500 border-amber-500/20' :
-                      'text-indigo-500 border-indigo-500/20'
-                    }`}
-                  >
-                    <option value="low">🔵 Low</option>
-                    <option value="medium">🟡 Medium</option>
-                    <option value="high">🔴 High</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Title & Description */}
-              <div className="space-y-2 text-left">
-                <input
-                  type="text"
-                  value={selectedTask.title}
-                  onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { title: e.target.value })}
-                  className={`w-full bg-transparent font-display font-black text-lg sm:text-xl border-b border-transparent focus:outline-none py-1 transition-all ${
-                    isDark ? 'text-slate-100 focus:border-slate-800' : 'text-slate-850 focus:border-slate-200'
-                  }`}
-                />
-                <textarea
-                  value={selectedTask.description}
-                  onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { description: e.target.value })}
-                  placeholder="Describe specs and developer requirements..."
-                  rows={2}
-                  className={`w-full border rounded-xl p-3 text-xs sm:text-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500/50 resize-none leading-relaxed transition-all ${
-                    isDark ? 'bg-slate-950 border-slate-800/60 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
-                  }`}
-                />
-              </div>
-
-              {/* Due Date Calendar specification inline */}
-              <div className="space-y-1.5 text-left">
-                <label className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Due Date deadline</label>
-                <div className="relative max-w-[200px]">
-                  <input
-                    type="date"
-                    value={selectedTask.dueDate || ''}
-                    onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { dueDate: e.target.value })}
-                    className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs ${
-                      isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-750'
-                    }`}
-                  />
-                </div>
-              </div>
-
-              {/* Manager Verification & Approved Sign-off */}
-              <div className={`p-4 rounded-xl border flex items-center justify-between transition-all ${
-                selectedTask.isApproved 
-                  ? 'bg-amber-500/10 border-amber-500/30 shadow-inner' 
-                  : (isDark ? 'bg-slate-950/60 border-slate-850' : 'bg-slate-50 border-slate-200')
-              }`}>
-                <div className="text-left space-y-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 flex items-center gap-1">
-                    🌟 Manager Review Status
-                  </span>
-                  <p className={`text-[10px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {selectedTask.isApproved 
-                      ? `Approved & Verified by Lead: ${ASSIGNEES.find(u => u.id === selectedTask.reviewerId)?.name}` 
-                      : `Awaiting sign-off by Lead: ${ASSIGNEES.find(u => u.id === selectedTask.reviewerId)?.name}`}
-                  </p>
-                </div>
-                
                 <button
-                  type="button"
-                  onClick={() => {
-                    handleUpdateTaskDetail(selectedTask.id, { isApproved: !selectedTask.isApproved });
-                    addLog(selectedTask.isApproved ? `❌ Unapproved: "${selectedTask.title}"` : `🌟 Manager Approved: "${selectedTask.title}"`);
-                  }}
-                  className={`px-4 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
-                    selectedTask.isApproved 
-                      ? 'bg-amber-550 text-white hover:bg-amber-600 shadow-md shadow-amber-500/15' 
-                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-500/15'
+                  onClick={() => setSelectedTask(null)}
+                  className={`p-1.5 rounded-lg border cursor-pointer transition-colors ${
+                    isDark ? 'border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-slate-200' : 'border-slate-150 hover:bg-slate-100 text-slate-400 hover:text-slate-600'
                   }`}
                 >
-                  {selectedTask.isApproved ? 'Approved ⭐' : 'Sign Off'}
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 
-              {/* Subtasks Section */}
-              <div className="space-y-3">
-                <h4 className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Subtasks Checklist</h4>
+              {/* Two Column Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
                 
-                {/* Add Subtask Input Form */}
-                <form 
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const inputVal = e.target.elements.subtaskText.value;
-                    handleAddSubtask(selectedTask, inputVal);
-                    e.target.reset();
-                  }}
-                  className="flex gap-2"
-                >
-                  <input
-                    type="text"
-                    name="subtaskText"
-                    placeholder="Add a subtask requirements..."
-                    className={`flex-1 border rounded-xl py-1.5 px-3 text-xs focus:outline-none focus:border-indigo-500/50 transition-all ${
-                      isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-750 focus:bg-white'
-                    }`}
-                  />
-                  <button
-                    type="submit"
-                    className={`px-3 py-1.5 border text-xs font-bold rounded-xl transition-all cursor-pointer ${
-                      isDark 
-                        ? 'bg-slate-850 hover:bg-slate-800 border-slate-800 hover:border-slate-700 text-slate-300' 
-                        : 'bg-slate-100 hover:bg-slate-200 border-slate-200 hover:border-slate-300 text-slate-650 shadow-sm'
-                    }`}
-                  >
-                    Add
-                  </button>
-                </form>
+                {/* Left Column (Details, Description, Checklist) */}
+                <div className="md:col-span-7 space-y-5">
+                  {/* Title & Description */}
+                  <div className="space-y-2 text-left">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-450'}`}>Task Title & description</span>
+                    <input
+                      type="text"
+                      value={selectedTask.title}
+                      onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { title: e.target.value })}
+                      className={`w-full bg-transparent font-display font-black text-lg sm:text-xl border-b border-transparent focus:outline-none py-1 transition-all ${
+                        isDark ? 'text-slate-100 focus:border-slate-800' : 'text-slate-850 focus:border-slate-200'
+                      }`}
+                    />
+                    <textarea
+                      value={selectedTask.description}
+                      onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { description: e.target.value })}
+                      placeholder="Describe specs and developer requirements..."
+                      rows={3}
+                      className={`w-full border rounded-xl p-3 text-xs sm:text-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500/50 resize-none leading-relaxed transition-all ${
+                        isDark ? 'bg-slate-950 border-slate-800/60 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                      }`}
+                    />
+                  </div>
 
-                {/* Subtask Items */}
-                <div className="max-h-[100px] overflow-y-auto space-y-2 pr-1">
-                  {selectedTask.subtasks && selectedTask.subtasks.map(s => (
-                    <div 
-                      key={s.id}
-                      onClick={() => toggleSubtask(selectedTask, s.id)}
-                      className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer text-xs ${
-                        isDark 
-                          ? 'bg-slate-950/60 hover:bg-slate-950 border-slate-850 hover:border-slate-800' 
-                          : 'bg-slate-50 hover:bg-slate-100/70 border-slate-150 hover:border-slate-200'
+                  {/* Subtasks Section */}
+                  <div className="space-y-3">
+                    <h4 className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Subtasks Checklist</h4>
+                    
+                    {/* Add Subtask Input Form */}
+                    <form 
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const inputVal = e.target.elements.subtaskText.value;
+                        handleAddSubtask(selectedTask, inputVal);
+                        e.target.reset();
+                      }}
+                      className="flex gap-2"
+                    >
+                      <input
+                        type="text"
+                        name="subtaskText"
+                        placeholder="Add a subtask requirements..."
+                        className={`flex-1 border rounded-xl py-1.5 px-3 text-xs focus:outline-none focus:border-indigo-500/50 transition-all ${
+                          isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-750 focus:bg-white'
+                        }`}
+                      />
+                      <button
+                        type="submit"
+                        className={`px-3 py-1.5 border text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                          isDark 
+                            ? 'bg-slate-850 hover:bg-slate-800 border-slate-800 hover:border-slate-700 text-slate-300' 
+                            : 'bg-slate-100 hover:bg-slate-200 border-slate-200 hover:border-slate-300 text-slate-655 shadow-sm'
+                        }`}
+                      >
+                        Add
+                      </button>
+                    </form>
+
+                    {/* Subtask Items */}
+                    <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+                      {selectedTask.subtasks && selectedTask.subtasks.map(s => (
+                        <div 
+                          key={s.id}
+                          onClick={() => toggleSubtask(selectedTask, s.id)}
+                          className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer text-xs ${
+                            isDark 
+                              ? 'bg-slate-950/60 hover:bg-slate-950 border-slate-850 hover:border-slate-800' 
+                              : 'bg-slate-50 hover:bg-slate-100/70 border-slate-150 hover:border-slate-200'
+                          }`}
+                        >
+                          <span className={`h-4.5 w-4.5 rounded flex items-center justify-center border transition-all ${
+                            s.completed ? 'bg-indigo-600 border-indigo-600 text-white' : (isDark ? 'border-slate-800' : 'border-slate-300')
+                          }`}>
+                            {s.completed && <Check className="h-3 w-3" />}
+                          </span>
+                          <span className={`flex-1 transition-all ${
+                            s.completed 
+                              ? 'text-slate-400 line-through' 
+                              : (isDark ? 'text-slate-300' : 'text-slate-750')
+                          }`}>
+                            {s.title}
+                          </span>
+                        </div>
+                      ))}
+                      {(!selectedTask.subtasks || selectedTask.subtasks.length === 0) && (
+                        <p className={`text-[10px] text-center py-2 ${isDark ? 'text-slate-550' : 'text-slate-400'}`}>No subtasks checklist created.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column (Specifications Sidebar) */}
+                <div className="md:col-span-5 space-y-5 border-t md:border-t-0 md:border-l pt-5 md:pt-0 pl-0 md:pl-6 border-slate-500/10">
+                  
+                  {/* Task Specs Grid */}
+                  <div className="space-y-3">
+                    <h4 className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Task Specifications</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400">Category</span>
+                        <select
+                          value={selectedTask.category || 'Feature'}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { category: e.target.value })}
+                          className={`w-full px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase border cursor-pointer focus:outline-none custom-select ${
+                            isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          <option value="Feature">🚀 Feature</option>
+                          <option value="Bug">🐛 Bug Fix</option>
+                          <option value="Frontend">🎨 Frontend</option>
+                          <option value="Backend">⚙️ Backend</option>
+                          <option value="Design">📐 Design</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400">Velocity (SP)</span>
+                        <select
+                          value={selectedTask.storyPoints || 1}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { storyPoints: Number(e.target.value) })}
+                          className={`w-full px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold border cursor-pointer font-mono focus:outline-none custom-select ${
+                            isDark ? 'bg-slate-950 text-slate-250 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
+                          }`}
+                        >
+                          <option value="1">1 SP</option>
+                          <option value="2">2 SP</option>
+                          <option value="3">3 SP</option>
+                          <option value="5">5 SP</option>
+                          <option value="8">8 SP</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400">Priority</span>
+                        <select
+                          value={selectedTask.priority}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { priority: e.target.value })}
+                          className={`w-full px-2.5 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wide border cursor-pointer focus:outline-none custom-select ${
+                            isDark ? 'bg-slate-950 text-slate-200 border-slate-800' : 'bg-slate-50 text-slate-750 border-slate-200'
+                          } ${
+                            selectedTask.priority === 'high' ? 'text-rose-500 border-rose-500/20' :
+                            selectedTask.priority === 'medium' ? 'text-amber-500 border-amber-500/20' :
+                            'text-indigo-500 border-indigo-500/20'
+                          }`}
+                        >
+                          <option value="low">🔵 Low</option>
+                          <option value="medium">🟡 Medium</option>
+                          <option value="high">🔴 High</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400">Due Date</span>
+                        <input
+                          type="date"
+                          value={selectedTask.dueDate || ''}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { dueDate: e.target.value })}
+                          className={`w-full border rounded-xl py-1.5 px-2.5 focus:outline-none focus:border-indigo-500 text-[10px] font-mono ${
+                            isDark ? 'bg-slate-950 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-750'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Specialist Team Assignees grid editor */}
+                  <div className="space-y-3">
+                    <label className={`text-[10px] font-bold uppercase tracking-wider block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>👤 Specialist Team Assignees</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block">🎨 Frontend Dev</span>
+                        <input
+                          type="text"
+                          placeholder="Name..."
+                          value={selectedTask.frontendDevId ? getDevAvatar(selectedTask.frontendDevId).name : ''}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { 
+                            frontendDevId: e.target.value,
+                            assigneeId: e.target.value 
+                          })}
+                          className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                            isDark ? 'bg-slate-950 border-slate-800 text-slate-350 focus:bg-slate-950' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block">⚙️ Backend Dev</span>
+                        <input
+                          type="text"
+                          placeholder="Name..."
+                          value={selectedTask.backendDevId ? getDevAvatar(selectedTask.backendDevId).name : ''}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { backendDevId: e.target.value })}
+                          className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                            isDark ? 'bg-slate-950 border-slate-800 text-slate-350 focus:bg-slate-950' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block">🧪 QA Tester</span>
+                        <input
+                          type="text"
+                          placeholder="Name..."
+                          value={selectedTask.qaDevId ? getDevAvatar(selectedTask.qaDevId).name : ''}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { qaDevId: e.target.value })}
+                          className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                            isDark ? 'bg-slate-950 border-slate-850 text-slate-350 focus:bg-slate-950' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                          }`}
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block">💼 Review Lead</span>
+                        <input
+                          type="text"
+                          placeholder="Name..."
+                          value={selectedTask.reviewerId ? getDevAvatar(selectedTask.reviewerId).name : ''}
+                          onChange={(e) => handleUpdateTaskDetail(selectedTask.id, { reviewerId: e.target.value })}
+                          className={`w-full border rounded-xl py-1.5 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                            isDark ? 'bg-slate-950 border-slate-800 text-slate-350 focus:bg-slate-950' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white'
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Manager Verification & Approved Sign-off */}
+                  <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 transition-all ${
+                    selectedTask.isApproved 
+                      ? 'bg-amber-500/10 border-amber-500/30 shadow-inner' 
+                      : (isDark ? 'bg-slate-950/60 border-slate-850' : 'bg-slate-50 border-slate-200')
+                  }`}>
+                    <div className="text-left space-y-0.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-550 flex items-center gap-1">
+                        🌟 Review Status
+                      </span>
+                      <p className={`text-[9px] leading-normal ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {selectedTask.isApproved 
+                          ? 'Approved by Lead' 
+                          : 'Awaiting Lead review'}
+                      </p>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleUpdateTaskDetail(selectedTask.id, { isApproved: !selectedTask.isApproved });
+                        addLog(selectedTask.isApproved ? `❌ Unapproved: "${selectedTask.title}"` : `🌟 Manager Approved: "${selectedTask.title}"`);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                        selectedTask.isApproved 
+                          ? 'bg-amber-550 text-white hover:bg-amber-600 shadow-sm' 
+                          : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
                       }`}
                     >
-                      <span className={`h-4.5 w-4.5 rounded flex items-center justify-center border transition-all ${
-                        s.completed ? 'bg-indigo-600 border-indigo-600 text-white' : (isDark ? 'border-slate-800' : 'border-slate-300')
-                      }`}>
-                        {s.completed && <Check className="h-3 w-3" />}
-                      </span>
-                      <span className={`flex-1 transition-all ${
-                        s.completed 
-                          ? 'text-slate-400 line-through' 
-                          : (isDark ? 'text-slate-300' : 'text-slate-750')
-                      }`}>
-                        {s.title}
-                      </span>
-                    </div>
-                  ))}
-                  {(!selectedTask.subtasks || selectedTask.subtasks.length === 0) && (
-                    <p className={`text-[10px] text-center py-2 ${isDark ? 'text-slate-550' : 'text-slate-400'}`}>No subtasks checklist created.</p>
-                  )}
+                      {selectedTask.isApproved ? 'Approved ⭐' : 'Sign Off'}
+                    </button>
+                  </div>
+
+                  {/* Delete task trigger */}
+                  <div className={`border-t pt-3 flex justify-between items-center text-[10px] ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                    <span className={`text-[9px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-450'}`}>ID: {selectedTask.id}</span>
+                    <button
+                      onClick={() => initDeleteTask(selectedTask.id)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-rose-500/20 hover:border-rose-500 bg-rose-500/5 hover:bg-rose-500/10 text-rose-500 hover:text-white font-bold transition-all cursor-pointer text-[10px]"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete Task
+                    </button>
+                  </div>
+
                 </div>
+
               </div>
 
-              {/* Delete task trigger */}
-              <div className={`border-t pt-4 flex justify-between items-center text-xs ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
-                <span className={`text-[10px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-450'}`}>ID: {selectedTask.id}</span>
-                <button
-                  onClick={() => initDeleteTask(selectedTask.id)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-rose-500/20 hover:border-rose-500 bg-rose-500/5 hover:bg-rose-500/10 text-rose-500 hover:text-white font-bold transition-all cursor-pointer"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete Task
-                </button>
-              </div>
             </motion.div>
           </div>
         )}
@@ -2436,7 +2810,7 @@ export default function App() {
                     <select
                       value={supportCategory}
                       onChange={(e) => setSupportCategory(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs custom-select transition-all ${
                         isDark ? 'bg-slate-950 border-slate-805 text-slate-300' : 'bg-slate-55 border-slate-200 text-slate-700'
                       }`}
                     >
@@ -2451,7 +2825,7 @@ export default function App() {
                     <select
                       value={supportPriority}
                       onChange={(e) => setSupportPriority(e.target.value)}
-                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs transition-all ${
+                      className={`w-full border rounded-xl py-2 px-3 focus:outline-none focus:border-indigo-500 text-xs custom-select transition-all ${
                         isDark ? 'bg-slate-950 border-slate-805 text-slate-300' : 'bg-slate-55 border-slate-200 text-slate-700'
                       }`}
                     >
